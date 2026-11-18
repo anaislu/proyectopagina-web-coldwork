@@ -1,0 +1,14 @@
+# Desarrollo: se aplica automáticamente con `docker compose up`.
+# Producción: `docker compose -f docker-compose.yml up -d` (ignora este archivo).
+services:
+  api:
+    build: { target: dev }
+    read_only: false
+    ports: ["3000:3000"]
+    volumes:
+      - ./apps/api/src:/app/src:ro
+    environment:
+      NODE_ENV: development
+      CORS_ORIGINS: http://localhost:4200,http://localhost:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # para Supabase local (`supabase start`)
