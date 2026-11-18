@@ -94,7 +94,7 @@ jobs:
       - run: ruff check .
       - run: pytest -q
         env:
-          AI_INTERNAL_TOKEN: ci-only-token
+          AI_INTERNAL_TOKEN: ci-only-token-0123456789abcdef0123456789abcdef
 
   docker:
     name: Docker · build ${{ matrix.service }}
