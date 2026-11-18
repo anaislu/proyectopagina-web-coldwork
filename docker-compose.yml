@@ -1,0 +1,66 @@
+# Producción / base. Supabase NO corre aquí: es un servicio gestionado externo
+# (Supabase Cloud). En local se usa `supabase start` (ver docs/ARCHITECTURE.md).
+name: coldwork
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true                     # PID 1 mínimo: reenvía señales y recoge zombies
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  web:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/anaislu}/coldwork-web:${TAG:-latest}
+    build: { context: ./apps/web, target: runtime }
+    ports: ["${WEB_PORT:-8080}:8080"]          # único puerto expuesto al host
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:?definir en .env}
+      SUPABASE_HOST: ${SUPABASE_HOST:?definir en .env}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?definir en .env}
+    tmpfs:
+      - /tmp:uid=101,gid=101
+      - /etc/nginx/conf.d:uid=101,gid=101
+    networks: [edge]
+    depends_on:
+      api: { condition: service_healthy }
+
+  api:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/anaislu}/coldwork-api:${TAG:-latest}
+    build: { context: ./apps/api, target: runtime }
+    environment:
+      PORT: 3000
+      SUPABASE_URL: ${SUPABASE_URL:?definir en .env}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?definir en .env}
+      AI_BASE_URL: http://ai:8000
+      AI_INTERNAL_TOKEN_FILE: /run/secrets/ai_internal_token
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    secrets: [ai_internal_token]
+    tmpfs: ["/tmp"]
+    networks: [edge, backend]                 # puente entre ambas redes
+    depends_on:
+      ai: { condition: service_healthy }
+
+  ai:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/anaislu}/coldwork-ai:${TAG:-latest}
+    build: { context: ./apps/ai, target: runtime }
+    secrets: [ai_internal_token]              # pydantic lo lee de /run/secrets
+    tmpfs: ["/tmp"]
+    networks: [backend]                       # sin acceso desde web ni desde internet
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true                            # sin salida a internet
+
+secrets:
+  ai_internal_token:
+    file: ./secrets/ai_internal_token
